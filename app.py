@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from config import uconfig
 from supabase import create_client, Client
 import base64
+import datetime
 
 
 #==============#
@@ -117,22 +118,37 @@ async def upload_pdf(payload: UploadPDFRequest, request: Request):
         # NOTE: Not URL-Safe base64 if the safe variant use the down below.
         decoded_bytes = base64.b64decode(payload.data)
         # decoded_bytes = base64.urlsafe_b64decode(payload.data).decode('utf-8')
+
+        file_path = f"public/{payload.name}" # assume there is .pdf already.
         response = (
             supabase.storage
             .from_("avatars")
             .upload(
                 file=decoded_bytes,
-                path=f"public/{payload.name}", # assume there is .pdf already.
+                path=file_path,
                 file_options={"cache-control": "3600", "upsert": "false"}
            )
         )
-        # TODO: push to db.
+        response = (
+            supabase.table("file")
+            .insert(
+                {"file_path": file_path, "file_name": payload.name, "uploaded_at": datetime.datetime.now(), "indexed": False}
+            ).execute()
+        )
         return {"success": True, "data": "WIP"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+@app.get("/chat")
+async def chat(request: Request):
+    token = check_auth(request)
+    try:
+        pass
+    except Exception as e:
+        pass
 
 @app.get("/summerize")
 async def summerize(q: str):
     return "WIP"
 
-# TODO: Upload the pdf, Ask for the summerization
+# TODO: Ask for the summerization
