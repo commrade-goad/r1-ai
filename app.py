@@ -1,9 +1,10 @@
 import fastapi as f
-from fastapi import HTTPException, status, Request
+from fastapi import HTTPException, status, Request, Depends
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from config import uconfig
 from supabase import create_client, Client
+import base64
 
 
 #==============#
@@ -14,7 +15,6 @@ supabase: Client = create_client(
         uconfig.supabase_url,
         uconfig.supabase_key,
         )
-
 security = HTTPBearer()
 
 
@@ -30,6 +30,27 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
 
+class UploadPDFRequest(BaseModel):
+    name: str
+    data: str
+
+#==============#
+#  HELPER      #
+#==============#
+def check_auth(req: Request) -> str:
+    auth_header = req.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    token = auth_header.split("Bearer ")[1]
+    return token
+
+async def get_current_user(token: str = Depends(security)):
+    try:
+        user = supabase.auth.get_user(token)
+        return user
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 
 #==============#
 #  ROUTES      #
@@ -42,7 +63,7 @@ async def login(payload: LoginRequest):
             "password": payload.password
             })
 
-        return response
+        return {"success": True, "data": response}
 
     except Exception as e:
         raise HTTPException(
@@ -57,11 +78,14 @@ async def register(payload: RegisterRequest):
             "email": payload.email,
             "password": payload.password,
             "options": {
-                "data": {"name": payload.name}
+                "data": {
+                    "name": payload.name,
+                    "is_admin": False
                 }
-            })
+            }
+        })
 
-        return response
+        return {"success": True, "data": response}
 
     except Exception as e:
         raise HTTPException(
@@ -80,18 +104,35 @@ async def logout():
                 detail=str(e)
                 )
 
-@app.get("/profile")
-async def get_profile(request: Request):
-    auth_header = request.headers.get("Authorization")
-
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-    token = auth_header.split("Bearer ")[1]
-
+@app.post("/upload-pdf")
+async def upload_pdf(payload: UploadPDFRequest, request: Request):
+    token = check_auth(request)
     try:
         response = supabase.auth.get_user(jwt=token)
-        return response
+        if response:
+            is_admin = response.user.user_metadata.get("is_admin", False)
+            if is_admin is False:
+                return {"success": False, "data": "Only admin can upload pdf."}
+
+        # NOTE: Not URL-Safe base64 if the safe variant use the down below.
+        decoded_bytes = base64.b64decode(payload.data)
+        # decoded_bytes = base64.urlsafe_b64decode(payload.data).decode('utf-8')
+        response = (
+            supabase.storage
+            .from_("avatars")
+            .upload(
+                file=decoded_bytes,
+                path=f"public/{payload.name}", # assume there is .pdf already.
+                file_options={"cache-control": "3600", "upsert": "false"}
+           )
+        )
+        # TODO: push to db.
+        return {"success": True, "data": "WIP"}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-# TODO: Upload the pdf, Login admin, Register admin, Ask for the summerization
+@app.get("/summerize")
+async def summerize(q: str):
+    return "WIP"
+
+# TODO: Upload the pdf, Ask for the summerization
