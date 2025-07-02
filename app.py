@@ -1,12 +1,16 @@
 import fastapi as f
 from fastapi import HTTPException, status, Request, Depends
 from fastapi.security import HTTPBearer
+from postgrest import APIResponse
 from pydantic import BaseModel
 from config import uconfig
 from supabase import create_client, Client
 import base64
 import datetime
 
+#===================================================#
+# Docs: https://supabase.com/docs/reference/python/ #
+#===================================================#
 
 #==============#
 #  GLOBAL VAR  #
@@ -120,7 +124,7 @@ async def upload_pdf(payload: UploadPDFRequest, request: Request):
         # decoded_bytes = base64.urlsafe_b64decode(payload.data).decode('utf-8')
 
         file_path = f"public/{payload.name}" # assume there is .pdf already.
-        response = (
+        file_call = (
             supabase.storage
             .from_("avatars")
             .upload(
@@ -135,7 +139,7 @@ async def upload_pdf(payload: UploadPDFRequest, request: Request):
                 {"file_path": file_path, "file_name": payload.name, "uploaded_at": datetime.datetime.now(), "indexed": False}
             ).execute()
         )
-        return {"success": True, "data": "WIP"}
+        return {"success": True, "data": file_call.full_path}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -143,12 +147,23 @@ async def upload_pdf(payload: UploadPDFRequest, request: Request):
 async def chat(request: Request):
     token = check_auth(request)
     try:
-        pass
-    except Exception as e:
-        pass
+        response = supabase.auth.get_user(jwt=token)
+        if response is None:
+            return {"success": False, "data": "Invalid JWT Token."}
 
+        user_id = response.user.id
+        response = (
+            supabase.table("history")
+            .select("*")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return {"success": True, "data": response}
+
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+# TODO: Finish this.
 @app.get("/summerize")
 async def summerize(q: str):
     return "WIP"
-
-# TODO: Ask for the summerization
