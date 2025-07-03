@@ -39,6 +39,15 @@ class UploadPDFRequest(BaseModel):
     name: str
     data: str
 
+class DeleteChatRequest(BaseModel):
+    chat_id: str
+
+class DeleteUserRequest(BaseModel):
+    user_uuid: str
+
+class DeletePDFRequest(BaseModel):
+    name: str
+
 #==============#
 #  HELPER      #
 #==============#
@@ -109,8 +118,28 @@ async def logout():
                 detail=str(e)
                 )
 
-@app.post("/upload-pdf")
-async def upload_pdf(payload: UploadPDFRequest, request: Request):
+# TODO: Finish this.
+@app.post("/user-edit")
+async def edit_user(request: Request):
+    pass
+
+@app.post("/user-del")
+async def del_user(request: Request, payload: DeleteUserRequest):
+    token = check_auth(request)
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        if response:
+            is_admin = response.user.user_metadata.get("is_admin", False)
+            if is_admin is False:
+                return {"success": False, "data": "Only admin can delete user."}
+
+        supabase.auth.admin.delete_user(payload.user_uuid)
+        return {"success": True, "data": "Successfully deleted the user"}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+@app.post("/file-upload")
+async def upload_file(payload: UploadPDFRequest, request: Request):
     token = check_auth(request)
     try:
         response = supabase.auth.get_user(jwt=token)
@@ -126,7 +155,7 @@ async def upload_pdf(payload: UploadPDFRequest, request: Request):
         file_path = f"public/{payload.name}" # assume there is .pdf already.
         file_call = (
             supabase.storage
-            .from_("avatars")
+            .from_("storage")
             .upload(
                 file=decoded_bytes,
                 path=file_path,
@@ -139,12 +168,36 @@ async def upload_pdf(payload: UploadPDFRequest, request: Request):
                 {"file_path": file_path, "file_name": payload.name, "uploaded_at": datetime.datetime.now(), "indexed": False}
             ).execute()
         )
+        if response.count is None:
+            return {"success": False, "data": "Failed to insert the new file to the db."}
         return {"success": True, "data": file_call.full_path}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-@app.get("/chat")
-async def chat(request: Request):
+@app.post("/file-del")
+async def del_file(request: Request, payload: DeletePDFRequest):
+    token = check_auth(request)
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        if response:
+            is_admin = response.user.user_metadata.get("is_admin", False)
+            if is_admin is False:
+                return {"success": False, "data": "Only admin can delete user."}
+
+        file_path = f"public/{payload.name}" # assume there is .pdf already.
+        file_call = (
+            supabase.storage
+            .from_("storage")
+            .remove([file_path])
+        )
+        if len(file_call) <= 0:
+            return {"success": False, "data": f"Failed to delete file {payload.name}."}
+        return {"success": True, "data": f"File {payload.name} deleted."}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+@app.get("/chat-get")
+async def get_chat(request: Request):
     token = check_auth(request)
     try:
         response = supabase.auth.get_user(jwt=token)
@@ -158,12 +211,38 @@ async def chat(request: Request):
             .eq("user_id", user_id)
             .execute()
         )
+        if response.count is None:
+            return {"success": False, "data": "Failed to get the chat."}
         return {"success": True, "data": response}
 
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-# TODO: Finish this.
+@app.post("/chat-del")
+async def del_chat(request: Request, payload: DeleteChatRequest):
+    token = check_auth(request)
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        if response is None:
+            return {"success": False, "data": "Invalid JWT Token."}
+
+        user_id = response.user.id
+        response = (
+                supabase.table("history")
+                .delete()
+                .eq("user_id", user_id)
+                .eq("id", payload.chat_id)
+                .execute()
+        )
+        if response.count is None:
+            return {"success": False, "data": f"Failed to delete the chat with the id {payload.chat_id}."}
+        return {"success": True, "data": f"Chat with the id {payload.chat_id} is deleted."}
+
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
 @app.get("/summerize")
 async def summerize(q: str):
     return "WIP"
+
+# TODO: Edit user, Summerize, Edit Chat?, Edit File?
