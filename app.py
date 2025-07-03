@@ -150,41 +150,41 @@ async def myself(request: Request):
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-@app.post("/user-get")
-async def get_user(request: Request):
-    token = check_auth(request)
-    try:
-        response = supabase.auth.get_user(jwt=token)
-        if response is None:
-            return {"success": False, "data": "Failed to get user info from that token."}
+# @app.post("/user-get")
+# async def get_user(request: Request):
+#     token = check_auth(request)
+#     try:
+#         response = supabase.auth.get_user(jwt=token)
+#         if response is None:
+#             return {"success": False, "data": "Failed to get user info from that token."}
+#
+#         is_admin = response.user.user_metadata.get("is_admin", False)
+#         if is_admin is None:
+#             return {"success": False, "data": "Only admin can get all user."}
+#
+#         response = supabase.auth.admin.list_users()
+#         return {"success": True, "data": response}
+#
+#     except Exception as e:
+#         raise HTTPException(status_code=401, detail=str(e))
 
-        is_admin = response.user.user_metadata.get("is_admin", False)
-        if is_admin is None:
-            return {"success": False, "data": "Only admin can get all user."}
-
-        response = supabase.auth.admin.list_users()
-        return {"success": True, "data": response}
-
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-@app.post("/user-del")
-async def del_user(request: Request, payload: DeleteUserRequest):
-    token = check_auth(request)
-    try:
-        response = supabase.auth.get_user(jwt=token)
-        if response is None:
-            return {"success": False, "data": "Failed to get user info from that token."}
-
-        is_admin = response.user.user_metadata.get("is_admin", False)
-        if is_admin is False:
-            return {"success": False, "data": "Only admin can delete user."}
-
-        supabase.auth.admin.delete_user(payload.user_uuid)
-        return {"success": True, "data": "Successfully deleted the user"}
-
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+# @app.post("/user-del")
+# async def del_user(request: Request, payload: DeleteUserRequest):
+#     token = check_auth(request)
+#     try:
+#         response = supabase.auth.get_user(jwt=token)
+#         if response is None:
+#             return {"success": False, "data": "Failed to get user info from that token."}
+#
+#         is_admin = response.user.user_metadata.get("is_admin", False)
+#         if is_admin is False:
+#             return {"success": False, "data": "Only admin can delete user."}
+#
+#         supabase.auth.admin.delete_user(payload.user_uuid)
+#         return {"success": True, "data": "Successfully deleted the user"}
+#
+#     except Exception as e:
+#         raise HTTPException(status_code=401, detail=str(e))
 
 @app.post("/file-upload")
 async def upload_file(payload: UploadPDFRequest, request: Request):
@@ -322,8 +322,12 @@ async def del_chat(request: Request, payload: DeleteChatRequest):
         raise HTTPException(status_code=401, detail=str(e))
 
 # TODO: Finish this.
-@app.get("/summerize")
+@app.post("/summerize")
 async def summerize(q: str):
     return "WIP"
 
 # TODO: Summerize, Edit Chat?, Edit File?
+# NOTE: Pindah jadi table user?
+# NOTE: pindah struktur return
+# NOTE: Pakai Middleware untuk check token
+# NOTE: Seperate file
