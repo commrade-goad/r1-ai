@@ -22,7 +22,7 @@ supabase: Client = create_client(
         )
 security = HTTPBearer()
 
-# CALL THIS ON FIRST RUN:
+# -*- CALL THIS ON FIRST RUN -*- #
 # import setup
 # setup.create_admin_user(supabase, uconfig)
 
