@@ -1,6 +1,6 @@
 import fastapi as f
 from fastapi import HTTPException, status, Request, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from config import uconfig
 from supabase import create_client, Client
@@ -53,10 +53,15 @@ class DeletePDFRequest(BaseModel):
     name: str
 
 class DeleteHistRequest(BaseModel):
-    hist_id: str
+    hist_id: int
 
 class CreateHistRequest(BaseModel):
     user_id: str
+    title: str
+
+class EditHistRequest(BaseModel):
+    hist_id: int
+    title: str
 
 #==============#
 #  HELPER      #
@@ -67,6 +72,19 @@ def check_auth(req: Request) -> str:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
     token = auth_header.split("Bearer ")[1]
     return token
+
+async def get_current_user(request: Request):
+    """Dependency to get current authenticated user"""
+    token = check_auth(request)
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        if response is None:
+            raise HTTPException(status_code=400, detail="Invalid JWT Token.")
+        return response.user
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
 
 #==============#
@@ -83,10 +101,7 @@ async def login(payload: LoginRequest):
         return {"code": 200, "data": response}
 
     except Exception as e:
-        raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e)
-                )
+        return {"code": 400, "data": str(e)}
 
 @app.post("/register")
 async def register(payload: RegisterRequest):
@@ -105,67 +120,19 @@ async def register(payload: RegisterRequest):
         return {"code": 200, "data": response}
 
     except Exception as e:
-        raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e)
-                )
-
-@app.post("/logout")
-async def logout():
-    try:
-        supabase.auth.sign_out()
-        return {"message": "Successfully logged out"}
-    except Exception as e:
-        raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e)
-                )
+        return {"code": 400, "data": str(e)}
 
 # NOTE: For now only work on password
 @app.post("/user-edit")
-async def edit_user(request: Request, payload: EditUserRequest):
-    token = check_auth(request)
-    try:
-        response = supabase.auth.get_user(jwt=token)
-        if response is None:
-            return {"code": 400, "data": "Failed to get user info from that token."}
-
-        response = supabase.auth.update_user({"password": payload.password})
+async def edit_user(payload: EditUserRequest, user = Depends(get_current_user)):
+    response = supabase.auth.admin.update_user_by_id(user.id, {"password": payload.password})
+    if response.user:
         return {"code": 200, "data": "User password changed successfully."}
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+    return {"code": 500, "data": "Failed to change user password."}
 
 @app.post("/myself")
-async def myself(request: Request):
-    token = check_auth(request)
-    try:
-        response = supabase.auth.get_user(jwt=token)
-
-        if response is None:
-            return {"code": 400, "data": "Failed to get user info from that token."}
-
-        return {"code": 200, "data": response}
-
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-# @app.post("/user-get")
-# async def get_user(request: Request):
-#     token = check_auth(request)
-#     try:
-#         response = supabase.auth.get_user(jwt=token)
-#         if response is None:
-#             return {"success": False, "data": "Failed to get user info from that token."}
-#
-#         is_admin = response.user.user_metadata.get("is_admin", False)
-#         if is_admin is None:
-#             return {"success": False, "data": "Only admin can get all user."}
-#
-#         response = supabase.auth.admin.list_users()
-#         return {"success": True, "data": response}
-#
-#     except Exception as e:
-#         raise HTTPException(status_code=401, detail=str(e))
+async def myself(user = Depends(get_current_user)):
+    return {"code": 200, "data": user}
 
 # @app.post("/user-del")
 # async def del_user(request: Request, payload: DeleteUserRequest):
@@ -186,75 +153,58 @@ async def myself(request: Request):
 #         raise HTTPException(status_code=401, detail=str(e))
 
 @app.post("/file-upload")
-async def upload_file(payload: UploadPDFRequest, request: Request):
-    token = check_auth(request)
+async def upload_file(payload: UploadPDFRequest, user = Depends(get_current_user)):
+    is_admin = user.user_metadata.get("is_admin", False)
+    if is_admin is False:
+        return {"code": 401, "data": "Only admin can upload pdf."}
+
+    # NOTE: Not URL-Safe base64 if the safe variant use the down below.
+    decoded_bytes = base64.b64decode(payload.data)
+    # decoded_bytes = base64.urlsafe_b64decode(payload.data).decode('utf-8')
+
+    if magic.from_buffer(decoded_bytes, mime=True) != "application/pdf":
+        return {"code": 400, "data": "The uploaded file is not a pdf."}
+
+    file_path = f"public/{payload.name}" # assume there is .pdf already.
+    file_call = (
+        supabase.storage
+        .from_("storage")
+        .upload(
+            file=decoded_bytes,
+            path=file_path,
+            file_options={"cache-control": "3600", "upsert": "false"}
+       )
+    )
     try:
-        response = supabase.auth.get_user(jwt=token)
-        if response is None:
-            return {"code": 400, "data": "Failed to get user info from that token."}
-
-        is_admin = response.user.user_metadata.get("is_admin", False)
-        if is_admin is False:
-            return {"code": 400, "data": "Only admin can upload pdf."}
-
-        # NOTE: Not URL-Safe base64 if the safe variant use the down below.
-        decoded_bytes = base64.b64decode(payload.data)
-        # decoded_bytes = base64.urlsafe_b64decode(payload.data).decode('utf-8')
-
-        if magic.from_buffer(decoded_bytes, mime=True) != "application/pdf":
-            return {"code": 400, "data": "The uploaded file is not a pdf."}
-
-        file_path = f"public/{payload.name}" # assume there is .pdf already.
-        file_call = (
-            supabase.storage
-            .from_("storage")
-            .upload(
-                file=decoded_bytes,
-                path=file_path,
-                file_options={"cache-control": "3600", "upsert": "false"}
-           )
-        )
         response = (
             supabase.table("file")
             .insert(
                 {"file_path": file_path, "file_name": payload.name, "uploaded_at": datetime.datetime.now(), "indexed": False}
             ).execute()
         )
-
-        if response.count is None:
-            return {"code": 500, "data": "Failed to insert the new file to the db."}
-
-        return {"code": 200, "data": file_call.full_path}
-
     except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        return {"code": 500, "data": str(e)}
+
+    return {"code": 200, "data": file_call.full_path}
+
 
 @app.post("/file-del")
-async def del_file(request: Request, payload: DeletePDFRequest):
-    token = check_auth(request)
-    try:
-        response = supabase.auth.get_user(jwt=token)
-        if response is None:
-            return {"code": 400, "data": "Failed to get user info from that token."}
+async def del_file(payload: DeletePDFRequest, user = Depends(get_current_user)):
+    is_admin = user.user_metadata.get("is_admin", False)
+    if is_admin is False:
+        return {"code": 401, "data": "Only admin can delete user."}
 
-        is_admin = response.user.user_metadata.get("is_admin", False)
-        if is_admin is False:
-            return {"code": 400, "data": "Only admin can delete user."}
+    file_path = f"public/{payload.name}" # assume there is .pdf already.
+    file_call = (
+        supabase.storage
+        .from_("storage")
+        .remove([file_path])
+    )
 
-        file_path = f"public/{payload.name}" # assume there is .pdf already.
-        file_call = (
-            supabase.storage
-            .from_("storage")
-            .remove([file_path])
-        )
+    if len(file_call) <= 0:
+        return {"code": 500, "data": f"Failed to delete file {payload.name}."}
 
-        if len(file_call) <= 0:
-            return {"code": 500, "data": f"Failed to delete file {payload.name}."}
-
-        return {"code": 200, "data": f"File {payload.name} deleted."}
-
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+    return {"code": 200, "data": f"File {payload.name} deleted."}
 
 # @app.post("/file-get")
 # async def get_file(request: Request):
@@ -278,58 +228,73 @@ async def del_file(request: Request, payload: DeletePDFRequest):
 #         raise HTTPException(status_code=401, detail=str(e))
 
 @app.get("/hist-get")
-async def get_hist(request: Request):
-    token = check_auth(request)
+async def get_hist(user = Depends(get_current_user)):
+    user_id = user.id
     try:
-        response = supabase.auth.get_user(jwt=token)
-        if response is None:
-            return {"code": 400, "data": "Invalid JWT Token."}
-
-        user_id = response.user.id
         response = (
             supabase.table("history")
             .select("*")
             .eq("user_id", user_id)
             .execute()
         )
-        if response.count is None:
-            return {"code": 500, "data": "Failed to get the chat."}
-        return {"code": 200, "data": response}
-
     except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        return {"code": 500, "data": str(e)}
+
+    return {"code": 200, "data": response}
 
 @app.get("/hist-del")
-async def del_hist(request: Request, payload: DeleteHistRequest):
-    token = check_auth(request)
+async def del_hist(payload: DeleteHistRequest, user = Depends(get_current_user)):
+    user_id = user.id
     try:
-        pass
+        _ = (
+            supabase.table("history")
+            .delete()
+            .eq("user_id", user_id)
+            .eq("id", payload.hist_id)
+            .execute()
+        )
     except Exception as e:
-        pass
-    pass
+        return {"code": 500, "data": str(e)}
 
-# @app.post("/chat-del")
-# async def del_chat(request: Request, payload: DeleteChatRequest):
-#     token = check_auth(request)
-#     try:
-#         response = supabase.auth.get_user(jwt=token)
-#         if response is None:
-#             return {"success": False, "data": "Invalid JWT Token."}
-#
-#         user_id = response.user.id
-#         response = (
-#                 supabase.table("history")
-#                 .delete()
-#                 .eq("user_id", user_id)
-#                 .eq("id", payload.chat_id)
-#                 .execute()
-#         )
-#         if response.count is None:
-#             return {"success": False, "data": f"Failed to delete the chat with the id {payload.chat_id}."}
-#         return {"success": True, "data": f"Chat with the id {payload.chat_id} is deleted."}
-#
-#     except Exception as e:
-#         raise HTTPException(status_code=401, detail=str(e))
+    return {"code": 200, "data": "History deleted"}
+
+@app.get("/hist-create")
+async def create_hist(payload: CreateHistRequest, user = Depends(get_current_user)):
+    try:
+        response = (
+            supabase.table("history")
+            .insert(
+                {
+                    "user_id": user.id,
+                    "title": payload.title,
+                    "created_at": datetime.datetime.now()
+                }
+            )
+            .execute()
+        )
+    except Exception as e:
+        return {"code": 500, "data": str(e)}
+
+    return {"code": 200, "data": response}
+
+@app.get("/hist-edit")
+async def edit_hist(payload: EditHistRequest, user = Depends(get_current_user)):
+    try:
+        response = (
+            supabase.table("history")
+            .update(
+                {
+                    "title": payload.title,
+                }
+            )
+            .eq("user_id", user.id)
+            .execute()
+        )
+    except Exception as e:
+        return {"code": 500, "data": str(e)}
+
+    return {"code": 200, "data": response}
+
 
 # TODO: Finish this.
 @app.post("/summerize")
