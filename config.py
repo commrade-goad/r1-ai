@@ -10,5 +10,6 @@ class Configuration:
         self.secret_key = os.getenv("K_KEY", "default_secret")
         self.url = os.getenv("K_IP", "0.0.0.0")
         self.port = int(os.getenv("K_PORT", "8000"))
+        self.email = os.getenv("K_EMAIL", "")
 
 uconfig = Configuration()

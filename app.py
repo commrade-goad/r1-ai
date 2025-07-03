@@ -1,12 +1,12 @@
 import fastapi as f
 from fastapi import HTTPException, status, Request, Depends
 from fastapi.security import HTTPBearer
-from postgrest import APIResponse
 from pydantic import BaseModel
 from config import uconfig
 from supabase import create_client, Client
 import base64
 import datetime
+import magic
 
 #===================================================#
 # Docs: https://supabase.com/docs/reference/python/ #
@@ -21,6 +21,10 @@ supabase: Client = create_client(
         uconfig.supabase_key,
         )
 security = HTTPBearer()
+
+# CALL THIS ON FIRST RUN:
+# import setup
+# setup.create_admin_user(supabase, uconfig)
 
 
 #==============#
@@ -47,6 +51,9 @@ class DeleteUserRequest(BaseModel):
 
 class DeletePDFRequest(BaseModel):
     name: str
+
+class EditUserRequest(BaseModel):
+    password: str
 
 #==============#
 #  HELPER      #
@@ -118,23 +125,64 @@ async def logout():
                 detail=str(e)
                 )
 
-# TODO: Finish this.
+# NOTE: For now only work on password
 @app.post("/user-edit")
-async def edit_user(request: Request):
-    pass
+async def edit_user(request: Request, payload: EditUserRequest):
+    token = check_auth(request)
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        if response is None:
+            return {"success": False, "data": "Failed to get user info from that token."}
+
+        response = supabase.auth.update_user({"password": payload.password})
+        return {"success": True, "data": "User password changed successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+@app.post("/myself")
+async def myself(request: Request):
+    token = check_auth(request)
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        if response is None:
+            return {"success": False, "data": "Failed to get user info from that token."}
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+@app.post("/user-get")
+async def get_user(request: Request):
+    token = check_auth(request)
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        if response is None:
+            return {"success": False, "data": "Failed to get user info from that token."}
+
+        is_admin = response.user.user_metadata.get("is_admin", False)
+        if is_admin is None:
+            return {"success": False, "data": "Only admin can get all user."}
+
+        response = supabase.auth.admin.list_users()
+        return {"success": True, "data": response}
+
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
 @app.post("/user-del")
 async def del_user(request: Request, payload: DeleteUserRequest):
     token = check_auth(request)
     try:
         response = supabase.auth.get_user(jwt=token)
-        if response:
-            is_admin = response.user.user_metadata.get("is_admin", False)
-            if is_admin is False:
-                return {"success": False, "data": "Only admin can delete user."}
+        if response is None:
+            return {"success": False, "data": "Failed to get user info from that token."}
+
+        is_admin = response.user.user_metadata.get("is_admin", False)
+        if is_admin is False:
+            return {"success": False, "data": "Only admin can delete user."}
 
         supabase.auth.admin.delete_user(payload.user_uuid)
         return {"success": True, "data": "Successfully deleted the user"}
+
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -143,14 +191,19 @@ async def upload_file(payload: UploadPDFRequest, request: Request):
     token = check_auth(request)
     try:
         response = supabase.auth.get_user(jwt=token)
-        if response:
-            is_admin = response.user.user_metadata.get("is_admin", False)
-            if is_admin is False:
-                return {"success": False, "data": "Only admin can upload pdf."}
+        if response is None:
+            return {"success": False, "data": "Failed to get user info from that token."}
+
+        is_admin = response.user.user_metadata.get("is_admin", False)
+        if is_admin is False:
+            return {"success": False, "data": "Only admin can upload pdf."}
 
         # NOTE: Not URL-Safe base64 if the safe variant use the down below.
         decoded_bytes = base64.b64decode(payload.data)
         # decoded_bytes = base64.urlsafe_b64decode(payload.data).decode('utf-8')
+
+        if magic.from_buffer(decoded_bytes, mime=True) != "application/pdf":
+            return {"success": False, "data": "The uploaded file is not a pdf."}
 
         file_path = f"public/{payload.name}" # assume there is .pdf already.
         file_call = (
@@ -168,9 +221,12 @@ async def upload_file(payload: UploadPDFRequest, request: Request):
                 {"file_path": file_path, "file_name": payload.name, "uploaded_at": datetime.datetime.now(), "indexed": False}
             ).execute()
         )
+
         if response.count is None:
             return {"success": False, "data": "Failed to insert the new file to the db."}
+
         return {"success": True, "data": file_call.full_path}
+
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -179,10 +235,12 @@ async def del_file(request: Request, payload: DeletePDFRequest):
     token = check_auth(request)
     try:
         response = supabase.auth.get_user(jwt=token)
-        if response:
-            is_admin = response.user.user_metadata.get("is_admin", False)
-            if is_admin is False:
-                return {"success": False, "data": "Only admin can delete user."}
+        if response is None:
+            return {"success": False, "data": "Failed to get user info from that token."}
+
+        is_admin = response.user.user_metadata.get("is_admin", False)
+        if is_admin is False:
+            return {"success": False, "data": "Only admin can delete user."}
 
         file_path = f"public/{payload.name}" # assume there is .pdf already.
         file_call = (
@@ -190,9 +248,31 @@ async def del_file(request: Request, payload: DeletePDFRequest):
             .from_("storage")
             .remove([file_path])
         )
+
         if len(file_call) <= 0:
             return {"success": False, "data": f"Failed to delete file {payload.name}."}
+
         return {"success": True, "data": f"File {payload.name} deleted."}
+
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+@app.post("/file-get")
+async def get_file(request: Request):
+    token = check_auth(request)
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        if response is None:
+            return {"success": False, "data": "Invalid JWT Token."}
+
+        response = (
+            supabase.table("file")
+            .select("*")
+            .execute()
+        )
+        if response.count is None:
+            return {"success": False, "data": "Failed to get the file list."}
+        return {"success": True, "data": response}
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -207,7 +287,7 @@ async def get_chat(request: Request):
         user_id = response.user.id
         response = (
             supabase.table("history")
-            .select("*")
+            .select("*, file_used(*)")
             .eq("user_id", user_id)
             .execute()
         )
@@ -241,8 +321,9 @@ async def del_chat(request: Request, payload: DeleteChatRequest):
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
+# TODO: Finish this.
 @app.get("/summerize")
 async def summerize(q: str):
     return "WIP"
 
-# TODO: Edit user, Summerize, Edit Chat?, Edit File?
+# TODO: Summerize, Edit Chat?, Edit File?
