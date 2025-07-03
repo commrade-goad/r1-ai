@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS history (
     id SERIAL PRIMARY KEY,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    title TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

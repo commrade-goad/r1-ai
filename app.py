@@ -1,6 +1,6 @@
 import fastapi as f
 from fastapi import HTTPException, status, Request, Depends
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from config import uconfig
 from supabase import create_client, Client
@@ -39,21 +39,24 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
 
-class UploadPDFRequest(BaseModel):
-    name: str
-    data: str
-
-class DeleteChatRequest(BaseModel):
-    chat_id: str
+class EditUserRequest(BaseModel):
+    password: str
 
 class DeleteUserRequest(BaseModel):
     user_uuid: str
 
+class UploadPDFRequest(BaseModel):
+    name: str
+    data: str
+
 class DeletePDFRequest(BaseModel):
     name: str
 
-class EditUserRequest(BaseModel):
-    password: str
+class DeleteHistRequest(BaseModel):
+    hist_id: str
+
+class CreateHistRequest(BaseModel):
+    user_id: str
 
 #==============#
 #  HELPER      #
@@ -64,13 +67,6 @@ def check_auth(req: Request) -> str:
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
     token = auth_header.split("Bearer ")[1]
     return token
-
-async def get_current_user(token: str = Depends(security)):
-    try:
-        user = supabase.auth.get_user(token)
-        return user
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 #==============#
@@ -260,48 +256,57 @@ async def del_file(request: Request, payload: DeletePDFRequest):
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
-@app.post("/file-get")
-async def get_file(request: Request):
-    token = check_auth(request)
-    try:
-        response = supabase.auth.get_user(jwt=token)
-        if response is None:
-            return {"success": False, "data": "Invalid JWT Token."}
-
-        response = (
-            supabase.table("file")
-            .select("*")
-            .execute()
-        )
-
-        if response.count is None:
-            return {"code": 500, "data": "Failed to get the file list."}
-
-        return {"code": 200, "data": response}
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-# @app.get("/chat-get")
-# async def get_chat(request: Request):
+# @app.post("/file-get")
+# async def get_file(request: Request):
 #     token = check_auth(request)
 #     try:
 #         response = supabase.auth.get_user(jwt=token)
 #         if response is None:
 #             return {"success": False, "data": "Invalid JWT Token."}
 #
-#         user_id = response.user.id
 #         response = (
-#             supabase.table("history")
-#             .select("*, file_used(*)")
-#             .eq("user_id", user_id)
+#             supabase.table("file")
+#             .select("*")
 #             .execute()
 #         )
-#         if response.count is None:
-#             return {"success": False, "data": "Failed to get the chat."}
-#         return {"success": True, "data": response}
 #
+#         if response.count is None:
+#             return {"code": 500, "data": "Failed to get the file list."}
+#
+#         return {"code": 200, "data": response}
 #     except Exception as e:
 #         raise HTTPException(status_code=401, detail=str(e))
+
+@app.get("/hist-get")
+async def get_hist(request: Request):
+    token = check_auth(request)
+    try:
+        response = supabase.auth.get_user(jwt=token)
+        if response is None:
+            return {"code": 400, "data": "Invalid JWT Token."}
+
+        user_id = response.user.id
+        response = (
+            supabase.table("history")
+            .select("*")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        if response.count is None:
+            return {"code": 500, "data": "Failed to get the chat."}
+        return {"code": 200, "data": response}
+
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+@app.get("/hist-del")
+async def del_hist(request: Request, payload: DeleteHistRequest):
+    token = check_auth(request)
+    try:
+        pass
+    except Exception as e:
+        pass
+    pass
 
 # @app.post("/chat-del")
 # async def del_chat(request: Request, payload: DeleteChatRequest):
@@ -332,7 +337,5 @@ async def summerize(q: str):
     return "WIP"
 
 # TODO: Summerize, Edit Chat?, Edit File?
-# NOTE: Pindah jadi table user?
-# NOTE: pindah struktur return
 # NOTE: Pakai Middleware untuk check token
 # NOTE: Seperate file
