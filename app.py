@@ -1,5 +1,5 @@
 import fastapi as f
-from fastapi import HTTPException, status, Request, Depends
+from fastapi import HTTPException, Request, Depends
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from config import uconfig
@@ -62,6 +62,7 @@ class CreateHistRequest(BaseModel):
 class EditHistRequest(BaseModel):
     hist_id: int
     title: str
+
 
 #==============#
 #  HELPER      #
@@ -176,7 +177,7 @@ async def upload_file(payload: UploadPDFRequest, user = Depends(get_current_user
        )
     )
     try:
-        response = (
+        _ = (
             supabase.table("file")
             .insert(
                 {"file_path": file_path, "file_name": payload.name, "uploaded_at": datetime.datetime.now(), "indexed": False}
@@ -237,10 +238,9 @@ async def get_hist(user = Depends(get_current_user)):
             .eq("user_id", user_id)
             .execute()
         )
+        return {"code": 200, "data": response}
     except Exception as e:
         return {"code": 500, "data": str(e)}
-
-    return {"code": 200, "data": response}
 
 @app.get("/hist-del")
 async def del_hist(payload: DeleteHistRequest, user = Depends(get_current_user)):
@@ -253,10 +253,9 @@ async def del_hist(payload: DeleteHistRequest, user = Depends(get_current_user))
             .eq("id", payload.hist_id)
             .execute()
         )
+        return {"code": 200, "data": "History deleted"}
     except Exception as e:
         return {"code": 500, "data": str(e)}
-
-    return {"code": 200, "data": "History deleted"}
 
 @app.get("/hist-create")
 async def create_hist(payload: CreateHistRequest, user = Depends(get_current_user)):
@@ -272,13 +271,13 @@ async def create_hist(payload: CreateHistRequest, user = Depends(get_current_use
             )
             .execute()
         )
+        return {"code": 200, "data": response}
     except Exception as e:
         return {"code": 500, "data": str(e)}
 
-    return {"code": 200, "data": response}
-
 @app.get("/hist-edit")
 async def edit_hist(payload: EditHistRequest, user = Depends(get_current_user)):
+    response = None
     try:
         response = (
             supabase.table("history")
@@ -290,10 +289,34 @@ async def edit_hist(payload: EditHistRequest, user = Depends(get_current_user)):
             .eq("user_id", user.id)
             .execute()
         )
+        return {"code": 200, "data": response}
     except Exception as e:
         return {"code": 500, "data": str(e)}
 
-    return {"code": 200, "data": response}
+@app.get("/chat-get")
+async def get_chat(hist_id: int, user = Depends(get_current_user)):
+    try:
+        response = (
+            supabase.table("history")
+            .select("*, chat(*)")
+            .eq("user_id", user.id)
+            .eq("id", hist_id)
+            .execute()
+        )
+
+        if not response.data:
+            return {"code": 404, "data": "History not found or access denied"}
+
+        history_data = response.data[0]
+        chats = sorted(
+            history_data["chat"] or [],
+            key=lambda x: x["created_at"]
+        )
+
+        return {"code": 200, "data": chats}
+
+    except Exception as e:
+        return {"code": 500, "data": str(e)}
 
 
 # TODO: Finish this.
@@ -302,5 +325,4 @@ async def summerize(q: str):
     return "WIP"
 
 # TODO: Summerize, Edit Chat?, Edit File?
-# NOTE: Pakai Middleware untuk check token
 # NOTE: Seperate file
