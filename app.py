@@ -63,6 +63,10 @@ class EditHistRequest(BaseModel):
     hist_id: int
     title: str
 
+class ChatWithAI(BaseModel):
+    query: str
+    hist_id: int | None = None
+
 
 #==============#
 #  HELPER      #
@@ -228,6 +232,7 @@ async def del_file(payload: DeletePDFRequest, user = Depends(get_current_user)):
 #     except Exception as e:
 #         raise HTTPException(status_code=401, detail=str(e))
 
+# get list of all the hist
 @app.get("/hist-get")
 async def get_hist(user = Depends(get_current_user)):
     user_id = user.id
@@ -242,6 +247,7 @@ async def get_hist(user = Depends(get_current_user)):
     except Exception as e:
         return {"code": 500, "data": str(e)}
 
+# delete hist
 @app.get("/hist-del")
 async def del_hist(payload: DeleteHistRequest, user = Depends(get_current_user)):
     user_id = user.id
@@ -257,6 +263,7 @@ async def del_hist(payload: DeleteHistRequest, user = Depends(get_current_user))
     except Exception as e:
         return {"code": 500, "data": str(e)}
 
+# create new hist manually
 @app.get("/hist-create")
 async def create_hist(payload: CreateHistRequest, user = Depends(get_current_user)):
     try:
@@ -275,6 +282,7 @@ async def create_hist(payload: CreateHistRequest, user = Depends(get_current_use
     except Exception as e:
         return {"code": 500, "data": str(e)}
 
+# edit hist title
 @app.get("/hist-edit")
 async def edit_hist(payload: EditHistRequest, user = Depends(get_current_user)):
     response = None
@@ -293,6 +301,7 @@ async def edit_hist(payload: EditHistRequest, user = Depends(get_current_user)):
     except Exception as e:
         return {"code": 500, "data": str(e)}
 
+# get all of the chat from that hist id
 @app.get("/chat-get")
 async def get_chat(hist_id: int, user = Depends(get_current_user)):
     try:
@@ -318,11 +327,54 @@ async def get_chat(hist_id: int, user = Depends(get_current_user)):
     except Exception as e:
         return {"code": 500, "data": str(e)}
 
+# send to ai and create the hist if didnt exist
+@app.post("/chat")
+async def post_chat(payload: ChatWithAI, user = Depends(get_current_user)):
+    # create new hist branch
+    if payload.hist_id is None:
+        try:
+            response = (
+                supabase.table("history")
+                .insert(
+                    {
+                        "user_id": user.id,
+                        "title": payload.query[:20], # for now just take the first 20 char to be the title.
+                        "created_at": datetime.datetime.now()
+                    }
+                )
+                .execute()
+            )
+            # TODO: create a new chat and call the ai stuff.
+            return {"code": 200, "data": response}
+        except Exception as e:
+            return {"code": 500, "data": str(e)}
+    else:
+        pass
 
-# TODO: Finish this.
-@app.post("/summerize")
-async def summerize(q: str):
-    return "WIP"
+# send to ai and create the hist if didnt exist
+@app.get("/chat")
+async def get_chat(query: str, hist_id: int | None = None, user = Depends(get_current_user)):
+    # create new hist branch
+    if hist_id is None:
+        try:
+            response = (
+                supabase.table("history")
+                .insert(
+                    {
+                        "user_id": user.id,
+                        "title": query[:20], # for now just take the first 20 char to be the title.
+                        "created_at": datetime.datetime.now()
+                    }
+                )
+                .execute()
+            )
+            # TODO: create a new chat and call the ai stuff.
+            return {"code": 200, "data": response}
+        except Exception as e:
+            return {"code": 500, "data": str(e)}
+    else:
+        pass
+
 
 # TODO: Summerize, Edit Chat?, Edit File?
 # NOTE: Seperate file
