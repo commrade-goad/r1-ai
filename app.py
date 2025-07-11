@@ -7,6 +7,7 @@ from supabase import create_client, Client
 import base64
 import datetime
 import magic
+import helper
 
 #===================================================#
 # Docs: https://supabase.com/docs/reference/python/ #
@@ -95,7 +96,7 @@ async def get_current_user(request: Request):
 #==============#
 #  ROUTES      #
 #==============#
-@app.post("/login")
+@app.post("/user/login")
 async def login(payload: LoginRequest):
     try:
         response = supabase.auth.sign_in_with_password({
@@ -108,7 +109,7 @@ async def login(payload: LoginRequest):
     except Exception as e:
         return {"code": 400, "data": str(e)}
 
-@app.post("/register")
+@app.post("/user/register")
 async def register(payload: RegisterRequest):
     try:
         response = supabase.auth.sign_up({
@@ -128,36 +129,19 @@ async def register(payload: RegisterRequest):
         return {"code": 400, "data": str(e)}
 
 # NOTE: For now only work on password
-@app.post("/user-edit")
+@app.post("/user/edit")
 async def edit_user(payload: EditUserRequest, user = Depends(get_current_user)):
     response = supabase.auth.admin.update_user_by_id(user.id, {"password": payload.password})
     if response.user:
         return {"code": 200, "data": "User password changed successfully."}
     return {"code": 500, "data": "Failed to change user password."}
 
-@app.post("/myself")
+@app.post("/user/info")
 async def myself(user = Depends(get_current_user)):
     return {"code": 200, "data": user}
 
-# @app.post("/user-del")
-# async def del_user(request: Request, payload: DeleteUserRequest):
-#     token = check_auth(request)
-#     try:
-#         response = supabase.auth.get_user(jwt=token)
-#         if response is None:
-#             return {"success": False, "data": "Failed to get user info from that token."}
-#
-#         is_admin = response.user.user_metadata.get("is_admin", False)
-#         if is_admin is False:
-#             return {"success": False, "data": "Only admin can delete user."}
-#
-#         supabase.auth.admin.delete_user(payload.user_uuid)
-#         return {"success": True, "data": "Successfully deleted the user"}
-#
-#     except Exception as e:
-#         raise HTTPException(status_code=401, detail=str(e))
 
-@app.post("/file-upload")
+@app.post("/file/upload")
 async def upload_file(payload: UploadPDFRequest, user = Depends(get_current_user)):
     is_admin = user.user_metadata.get("is_admin", False)
     if is_admin is False:
@@ -193,7 +177,7 @@ async def upload_file(payload: UploadPDFRequest, user = Depends(get_current_user
     return {"code": 200, "data": file_call.full_path}
 
 
-@app.post("/file-del")
+@app.post("/file/delete")
 async def del_file(payload: DeletePDFRequest, user = Depends(get_current_user)):
     is_admin = user.user_metadata.get("is_admin", False)
     if is_admin is False:
@@ -211,29 +195,9 @@ async def del_file(payload: DeletePDFRequest, user = Depends(get_current_user)):
 
     return {"code": 200, "data": f"File {payload.name} deleted."}
 
-# @app.post("/file-get")
-# async def get_file(request: Request):
-#     token = check_auth(request)
-#     try:
-#         response = supabase.auth.get_user(jwt=token)
-#         if response is None:
-#             return {"success": False, "data": "Invalid JWT Token."}
-#
-#         response = (
-#             supabase.table("file")
-#             .select("*")
-#             .execute()
-#         )
-#
-#         if response.count is None:
-#             return {"code": 500, "data": "Failed to get the file list."}
-#
-#         return {"code": 200, "data": response}
-#     except Exception as e:
-#         raise HTTPException(status_code=401, detail=str(e))
 
 # get list of all the hist
-@app.get("/hist-get")
+@app.get("/history/get")
 async def get_hist(user = Depends(get_current_user)):
     user_id = user.id
     try:
@@ -248,7 +212,7 @@ async def get_hist(user = Depends(get_current_user)):
         return {"code": 500, "data": str(e)}
 
 # delete hist
-@app.get("/hist-del")
+@app.get("/history/delete")
 async def del_hist(payload: DeleteHistRequest, user = Depends(get_current_user)):
     user_id = user.id
     try:
@@ -264,7 +228,7 @@ async def del_hist(payload: DeleteHistRequest, user = Depends(get_current_user))
         return {"code": 500, "data": str(e)}
 
 # create new hist manually
-@app.get("/hist-create")
+@app.get("/history/create")
 async def create_hist(payload: CreateHistRequest, user = Depends(get_current_user)):
     try:
         response = (
@@ -283,7 +247,7 @@ async def create_hist(payload: CreateHistRequest, user = Depends(get_current_use
         return {"code": 500, "data": str(e)}
 
 # edit hist title
-@app.get("/hist-edit")
+@app.get("/history/edit")
 async def edit_hist(payload: EditHistRequest, user = Depends(get_current_user)):
     response = None
     try:
@@ -302,8 +266,8 @@ async def edit_hist(payload: EditHistRequest, user = Depends(get_current_user)):
         return {"code": 500, "data": str(e)}
 
 # get all of the chat from that hist id
-@app.get("/chat-get")
-async def get_chat(hist_id: int, user = Depends(get_current_user)):
+@app.get("/chat/get-all")
+async def aget_chat(hist_id: int, user = Depends(get_current_user)):
     try:
         response = (
             supabase.table("history")
@@ -328,52 +292,20 @@ async def get_chat(hist_id: int, user = Depends(get_current_user)):
         return {"code": 500, "data": str(e)}
 
 # send to ai and create the hist if didnt exist
-@app.post("/chat")
+@app.post("/chat/send")
 async def post_chat(payload: ChatWithAI, user = Depends(get_current_user)):
-    # create new hist branch
-    if payload.hist_id is None:
-        try:
-            response = (
-                supabase.table("history")
-                .insert(
-                    {
-                        "user_id": user.id,
-                        "title": payload.query[:20], # for now just take the first 20 char to be the title.
-                        "created_at": datetime.datetime.now()
-                    }
-                )
-                .execute()
-            )
-            # TODO: create a new chat and call the ai stuff.
-            return {"code": 200, "data": response}
-        except Exception as e:
-            return {"code": 500, "data": str(e)}
-    else:
-        pass
+    try:
+        helper.chat_helper(supabase, user, payload.query, payload.hist_id)
+    except Exception as e:
+        return {"code": 500, "data": str(e)}
 
 # send to ai and create the hist if didnt exist
-@app.get("/chat")
+@app.get("/chat/send")
 async def get_chat(query: str, hist_id: int | None = None, user = Depends(get_current_user)):
-    # create new hist branch
-    if hist_id is None:
-        try:
-            response = (
-                supabase.table("history")
-                .insert(
-                    {
-                        "user_id": user.id,
-                        "title": query[:20], # for now just take the first 20 char to be the title.
-                        "created_at": datetime.datetime.now()
-                    }
-                )
-                .execute()
-            )
-            # TODO: create a new chat and call the ai stuff.
-            return {"code": 200, "data": response}
-        except Exception as e:
-            return {"code": 500, "data": str(e)}
-    else:
-        pass
+    try:
+        helper.chat_helper(supabase, user, query, hist_id)
+    except Exception as e:
+        return {"code": 500, "data": str(e)}
 
 
 # TODO: Summerize, Edit Chat?, Edit File?
