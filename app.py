@@ -4,9 +4,12 @@ from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from config import uconfig
 from supabase import create_client, Client
+from typing import List
 import base64
 import datetime
 import magic
+from rag_sermon_summarizer import summarize_sermon 
+from typing import Optional
 
 #===================================================#
 # Docs: https://supabase.com/docs/reference/python/ #
@@ -319,10 +322,98 @@ async def get_chat(hist_id: int, user = Depends(get_current_user)):
         return {"code": 500, "data": str(e)}
 
 
-# TODO: Finish this.
-@app.post("/summerize")
-async def summerize(q: str):
-    return "WIP"
+class ChatRequest(BaseModel):
+    history_id: Optional[str] = None
+    message: str
+    file_path: Optional[str] = None  # Optional, can be None if no file is attached
+
+@app.post("/chat")
+async def create_chat(request: ChatRequest, user = Depends(get_current_user)):
+    """
+    Mengirim pesan baru
+    """
+    if not request.history_id:
+        try:
+            response = (supabase.table("history").insert(
+                {
+                    "user_id": user.id,
+                    "title": request.message,
+                }
+            ).execute())
+
+            rag_response = summarize_sermon(request.message)
+
+            message_to_insert = [
+                {
+                    "history_id": response.data[0]["id"],
+                    "role": "user",
+                    "content": request.message,
+                },
+                {
+                    "history_id": response.data[0]["id"],
+                    "role": "assistant",
+                    "content": rag_response.summary,
+                }
+            ]
+
+            response = supabase.table("chat").insert(message_to_insert).execute()
+
+            source_documents_to_insert = rag_response.source_documents if rag_response.source_documents else []
+
+            for doc in source_documents_to_insert:
+                supabase.table("chat_reference").insert({
+                    "chat_id": response.data[1]["id"],
+                    "reference": doc
+                }).execute()
+
+            response.data[1]["source_documents"] = rag_response.source_documents
+
+            return {
+                "code": 200,
+                "data": response.data
+            }
+        except Exception as e:
+            return {"code": 500, "data": str(e)}
+    else:
+        try:
+            history_check = supabase.table("history").select("id").eq("id", request.history_id).execute()
+
+            if history_check.count == 0:
+                return {"code": 404, "data": "History not found or access denied"}
+
+            rag_response = summarize_sermon(request.message)
+
+            new_messages = [
+                {
+                    "history_id": request.history_id,
+                    "role": "user",
+                    "content": request.message,
+                },
+                {
+                    "history_id": request.history_id,
+                    "role": "assistant",
+                    "content": rag_response.summary,
+                }
+            ]
+
+            response = supabase.table("chat").insert(new_messages).execute()
+
+            source_documents_to_insert = rag_response.source_documents if rag_response.source_documents else []
+
+            for doc in source_documents_to_insert:
+                supabase.table("chat_reference").insert({
+                    "chat_id": response.data[1]["id"],
+                    "reference": doc
+                }).execute()
+
+            response.data[1]["source_documents"] = rag_response.source_documents
+
+            return {
+                "code": 200,
+                "data": response.data
+            }
+        except Exception as e:
+            return {"code": 500, "data": str(e)}
 
 # TODO: Summerize, Edit Chat?, Edit File?
 # NOTE: Seperate file
