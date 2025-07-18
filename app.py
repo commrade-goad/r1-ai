@@ -1,5 +1,6 @@
 import fastapi as f
-from fastapi import HTTPException, Request, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException, Request, Depends, UploadFile, File, HTTPException, status
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from config import uconfig
@@ -10,6 +11,7 @@ import datetime
 import magic
 from rag_sermon_summarizer import summarize_sermon 
 from typing import Optional
+from rag_store_documents import process_and_add_documents
 
 #===================================================#
 # Docs: https://supabase.com/docs/reference/python/ #
@@ -19,6 +21,14 @@ from typing import Optional
 #  GLOBAL VAR  #
 #==============#
 app = f.FastAPI()
+# Tambahkan CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # atau ["http://localhost:5173"] untuk Vite dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 supabase: Client = create_client(
         uconfig.supabase_url,
         uconfig.supabase_key,
@@ -414,6 +424,50 @@ async def create_chat(request: ChatRequest, user = Depends(get_current_user)):
             }
         except Exception as e:
             return {"code": 500, "data": str(e)}
+
+@app.post("/update-knowledge", tags=["Knowledge Base"])
+async def update_knowledge_base(
+    files: List[UploadFile] = File(
+        ...,
+        description="Upload 1 hingga 5 file PDF untuk ditambahkan ke knowledge base.",
+        max_items=5
+    )
+):
+    """
+    Endpoint ini menangani alur lengkap:
+    1. Menerima file PDF (maksimal 5).
+    2. Mengunggahnya ke Supabase Storage.
+    3. Mengekstrak teks, membuat chunk, dan menghasilkan embedding.
+    4. Menyimpan vektor embedding ke Pinecone.
+    """
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tidak ada file yang diunggah."
+        )
+
+    # Validasi tipe file (hanya izinkan PDF)
+    for file in files:
+        if file.content_type != 'application/pdf':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File '{file.filename}' bukan PDF. Hanya file PDF yang diizinkan."
+            )
+
+    print(f"Menerima {len(files)} file untuk diproses...")
+    
+    # Panggil fungsi inti untuk melakukan semua pekerjaan berat
+    result = await process_and_add_documents(files)
+
+    # Kembalikan respons berdasarkan hasil dari prosesor
+    if result["status"] == "error":
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=result["message"]
+        )
+    
+    return result
+
 
 # TODO: Summerize, Edit Chat?, Edit File?
 # NOTE: Seperate file
