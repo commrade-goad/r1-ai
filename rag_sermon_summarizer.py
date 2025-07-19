@@ -80,7 +80,19 @@ vectorstore = PineconeVectorStore.from_existing_index(
         )
 
 # buat retriever 
-retriever = vectorstore.as_retriever(search_kwargs={'k': 5})
+# retriever = vectorstore.as_retriever(
+#         search_type="similarity_score_threshold",
+#         search_kwargs={
+#             'score_threshold': 0.75,
+#             'k': 10
+#         }
+#     )
+
+retriever = vectorstore.as_retriever(
+        search_kwargs={
+            'k': 5
+        }
+    )
 
 # inisialiasi llm untuk summarization
 summarization_llm = ChatOpenAI(
