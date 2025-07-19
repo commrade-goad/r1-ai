@@ -33,6 +33,12 @@ supabase: Client = create_client(
         uconfig.supabase_url,
         uconfig.supabase_key,
         )
+
+# Admin client with service role key for admin operations
+supabase_admin: Client = create_client(
+        uconfig.supabase_url,
+        uconfig.supabase_service_role_key if uconfig.supabase_service_role_key != "na" else uconfig.supabase_key,
+        )
 security = HTTPBearer()
 
 # -*- CALL THIS ON FIRST RUN -*- #
@@ -76,6 +82,10 @@ class EditHistRequest(BaseModel):
     hist_id: int
     title: str
 
+class EditUserToAdminRequest(BaseModel):
+    uid: str
+    is_admin: bool
+
 
 #==============#
 #  HELPER      #
@@ -99,6 +109,36 @@ async def get_current_user(request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+# jadi admin    
+# @app.put("/edit-user-to-admin", response_model=bool)
+# def edit_user_to_admin(req: EditUserToAdminRequest, current_user = Depends(get_current_user)):
+#     # Check if the current user is an admin
+#     is_admin = current_user.user_metadata.get("is_admin", True)
+#     if not is_admin:
+#         raise HTTPException(status_code=403, detail="Only admin users can modify admin status")
+    
+#     try:
+#         # Get the target user using admin client
+#         user = supabase_admin.auth.admin.get_user_by_id(req.uid)
+#         if user.user is None:
+#             raise HTTPException(status_code=404, detail="User not found")
+
+#         # Update user metadata using admin client
+#         response = supabase_admin.auth.admin.update_user_by_id(
+#             req.uid,
+#             {"user_metadata": {"is_admin": req.is_admin}}
+#         )
+#         if response.user is None:
+#             raise HTTPException(status_code=500, detail="Failed to update user")
+
+#         return True
+        
+#     except Exception as e:
+#         # Handle Supabase API errors
+#         if "User not allowed" in str(e) or "403" in str(e):
+#             raise HTTPException(status_code=403, detail="Insufficient permissions to perform admin operations")
+#         raise HTTPException(status_code=500, detail=f"Error updating user: {str(e)}")
 
 
 #==============#
@@ -139,7 +179,7 @@ async def register(payload: RegisterRequest):
 # NOTE: For now only work on password
 @app.post("/user-edit")
 async def edit_user(payload: EditUserRequest, user = Depends(get_current_user)):
-    response = supabase.auth.admin.update_user_by_id(user.id, {"password": payload.password})
+    response = supabase_admin.auth.admin.update_user_by_id(user.id, {"password": payload.password})
     if response.user:
         return {"code": 200, "data": "User password changed successfully."}
     return {"code": 500, "data": "Failed to change user password."}
