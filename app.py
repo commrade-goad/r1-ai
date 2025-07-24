@@ -206,6 +206,61 @@ async def myself(user = Depends(get_current_user)):
 #     except Exception as e:
 #         raise HTTPException(status_code=401, detail=str(e))
 
+@app.post("/image-upload")
+async def upload_image(payload: UploadPDFRequest, user = Depends(get_current_user)):
+    is_admin = user.user_metadata.get("is_admin", False)
+    if is_admin is False:
+        return {"code": 401, "data": "Only admin can upload pdf."}
+
+    # NOTE: Not URL-Safe base64 if the safe variant use the down below.
+    decoded_bytes = base64.b64decode(payload.data)
+    # decoded_bytes = base64.urlsafe_b64decode(payload.data).decode('utf-8')
+
+    supported = ["image/png", "image/jpg", "image/jpeg", "image/webp"];
+    if magic.from_buffer(decoded_bytes, mime=True) not in supported: 
+        return {"code": 400, "data": "The uploaded file is not supported."}
+
+    file_path = f"public/{payload.name}" # assume there is .pdf already.
+    file_call = (
+        supabase.storage
+        .from_("storage-image")
+        .upload(
+            file=decoded_bytes,
+            path=file_path,
+            file_options={"cache-control": "3600", "upsert": "false"}
+       )
+    )
+    try:
+        _ = (
+            supabase.table("file")
+            .insert(
+                {"file_path": file_path, "file_name": payload.name, "uploaded_at": datetime.datetime.now()}
+            ).execute()
+        )
+    except Exception as e:
+        return {"code": 500, "data": str(e)}
+
+    return {"code": 200, "data": file_call.full_path}
+
+
+@app.post("/image-del")
+async def del_image(payload: DeletePDFRequest, user = Depends(get_current_user)):
+    is_admin = user.user_metadata.get("is_admin", False)
+    if is_admin is False:
+        return {"code": 401, "data": "Only admin can delete user."}
+
+    file_path = f"public/{payload.name}" # assume there is .pdf already.
+    file_call = (
+        supabase.storage
+        .from_("storage-image")
+        .remove([file_path])
+    )
+
+    if len(file_call) <= 0:
+        return {"code": 500, "data": f"Failed to delete file {payload.name}."}
+
+    return {"code": 200, "data": f"File {payload.name} deleted."}
+
 @app.post("/file-upload")
 async def upload_file(payload: UploadPDFRequest, user = Depends(get_current_user)):
     is_admin = user.user_metadata.get("is_admin", False)
