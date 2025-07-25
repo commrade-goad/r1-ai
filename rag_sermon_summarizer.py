@@ -115,6 +115,7 @@ Sebelum menjawab, lakukan langkah-langkah internal berikut:
 1.  Identifikasi poin-poin utama dari setiap bagian konteks yang relevan dengan pertanyaan.
 2.  Sintesis poin-poin tersebut untuk menemukan pesan atau argumen sentral.
 3.  Rancang struktur jawaban Anda: pembukaan, isi (poin-poin utama), dan penutup/kesimpulan.
+4.  Berikan bagian tersendiri dari ayat-ayat yang relevan menjadi dengan format poin-poin tetapi masih cantumkan pada ringkasan yang telah dibuat.
 
 ### PERTANYAAN
 {question}
