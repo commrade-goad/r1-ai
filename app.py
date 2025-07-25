@@ -563,6 +563,4 @@ async def update_knowledge_base(
     
     return result
 
-
-# TODO: Summerize, Edit Chat?, Edit File?
 # NOTE: Seperate file
