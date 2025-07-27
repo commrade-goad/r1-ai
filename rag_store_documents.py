@@ -45,13 +45,13 @@ try:
         length_function=len,
         is_separator_regex=False,
     )
-    print("✅ Klien dan model berhasil diinisialisasi.")
+    print("Klien dan model berhasil diinisialisasi.")
 
 except KeyError as e:
-    print(f"❌ Error: Environment variable tidak ditemukan -> {e}. Pastikan file .env sudah benar.")
+    print(f"Error: Environment variable tidak ditemukan -> {e}. Pastikan file .env sudah benar.")
     exit()
 except Exception as e:
-    print(f"❌ Gagal menginisialisasi klien: {e}")
+    print(f"Gagal menginisialisasi klien: {e}")
     exit()
 
 # --- FUNGSI UTAMA UNTUK MEMPROSES FILE ---
@@ -67,7 +67,7 @@ async def process_and_add_documents(files: List[UploadFile]) -> dict:
     with tempfile.TemporaryDirectory() as temp_dir:
         for file in files:
             if not file.filename:
-                print("⚠️ Peringatan: Ditemukan file unggahan tanpa nama, file ini dilewati.")
+                print("Peringatan: Ditemukan file unggahan tanpa nama, file ini dilewati.")
                 continue 
 
             file_path_in_bucket = f"{FOLDER_PATH}/{file.filename}"
@@ -89,7 +89,7 @@ async def process_and_add_documents(files: List[UploadFile]) -> dict:
 
                 # 3. Dapatkan URL publik dari Supabase
                 public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
-                print(f"🔗 Berhasil upload & mendapatkan URL: {public_url}")
+                print(f"Berhasil upload & mendapatkan URL: {public_url}")
 
                 # 4. Load konten PDF menggunakan PyPDFLoader
                 loader = PyPDFLoader(temp_file_path)
@@ -103,7 +103,7 @@ async def process_and_add_documents(files: List[UploadFile]) -> dict:
                 processed_files_info.append({"filename": file.filename, "url": public_url})
 
             except Exception as e:
-                print(f"🔴 GAGAL memproses file {file.filename}: {e}")
+                print(f"GAGAL memproses file {file.filename}: {e}")
                 # Jika gagal, lanjutkan ke file berikutnya
                 continue
     
@@ -114,7 +114,7 @@ async def process_and_add_documents(files: List[UploadFile]) -> dict:
         # 6. Pecah dokumen menjadi chunk
         print(f"Memecah {len(all_new_documents)} halaman menjadi chunk...")
         all_chunks = text_splitter.split_documents(all_new_documents)
-        print(f"✅ Dibuat {len(all_chunks)} chunk baru.")
+        print(f"Dibuat {len(all_chunks)} chunk baru.")
 
         # 7. Tambahkan chunk ke Pinecone (sudah termasuk proses embedding)
         print("Menambahkan chunk ke Pinecone...")
@@ -129,5 +129,5 @@ async def process_and_add_documents(files: List[UploadFile]) -> dict:
         }
 
     except Exception as e:
-        print(f"🔴 GAGAL saat chunking atau upload ke Pinecone: {e}")
+        print(f"GAGAL saat chunking atau upload ke Pinecone: {e}")
         return {"status": "error", "message": f"Gagal pada tahap akhir: {e}"}
