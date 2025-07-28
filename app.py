@@ -373,12 +373,13 @@ async def get_chat(hist_id: int, user = Depends(get_current_user)):
 
 
 class ChatRequest(BaseModel):
+    user_id: str
     history_id: Optional[str] = None
     message: str
     file_path: Optional[str] = None  # Optional, can be None if no file is attached
 
 @app.post("/chat")
-async def create_chat(request: ChatRequest, user = Depends(get_current_user)):
+async def create_chat(request: ChatRequest):
     """
     Mengirim pesan baru
     """
@@ -386,7 +387,7 @@ async def create_chat(request: ChatRequest, user = Depends(get_current_user)):
         try:
             response = (supabase.table("history").insert(
                 {
-                    "user_id": user.id,
+                    "user_id": request.user_id,
                     "title": request.message,
                 }
             ).execute())
