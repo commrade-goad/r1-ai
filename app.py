@@ -509,6 +509,10 @@ async def update_knowledge_base(
     
     return result
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 
 # TODO: Summerize, Edit Chat?, Edit File?
 # NOTE: Seperate file
