@@ -22,13 +22,18 @@ from rag_store_documents import process_and_add_documents
 #==============#
 app = f.FastAPI()
 # Tambahkan CORS middleware
+origins = [
+    "https://hegai.joelmedia.my.id",
+    "http://localhost:5173", # For local development
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # atau ["http://localhost:5173"] untuk Vite dev server
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 supabase: Client = create_client(
         uconfig.supabase_url,
         uconfig.supabase_key,
