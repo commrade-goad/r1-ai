@@ -4,22 +4,43 @@ from typing import List
 
 from dotenv import load_dotenv
 from fastapi import UploadFile
+from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader
+# from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
 from supabase import create_client, Client
 
+from langchain_experimental.text_splitter import SemanticChunker
+
+
 # Muat environment variables dari file .env
 load_dotenv()
+
+# --- HELPER FUNCTION UNTUK MEMBERSIHKAN METADATA ---
+def clean_pinecone_metadata(docs: List[Document]) -> List[Document]:
+    """
+    Menghapus atau mengubah tipe data metadata yang tidak didukung oleh Pinecone.
+    Pinecone hanya mendukung: string, number, boolean, atau list of strings.
+    """
+    for doc in docs:
+        cleaned_meta = {}
+        for key, value in doc.metadata.items():
+            if isinstance(value, (str, int, float, bool)):
+                cleaned_meta[key] = value
+            elif isinstance(value, list) and all(isinstance(i, str) for i in value):
+                cleaned_meta[key] = value
+        doc.metadata = cleaned_meta
+    return docs
 
 # --- INISIALISASI KLIEN (dilakukan sekali saat modul dimuat) ---
 try:
     # Kredensial Supabase
-    SUPABASE_URL: str = os.environ["R_SUPABASE_URL"]
-    SUPABASE_KEY: str = os.environ["R_SUPABASE_KEY"]
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    # SUPABASE_URL: str = os.environ["R_SUPABASE_URL"]
+    # SUPABASE_KEY: str = os.environ["R_SUPABASE_KEY"]
+    # supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     # Nama Bucket & Folder Supabase
     BUCKET_NAME: str = os.environ.get("SUPABASE_BUCKET", "dataset-khotbah")
@@ -39,11 +60,14 @@ try:
     vectorstore = PineconeVectorStore(index_name=INDEX_NAME, embedding=embeddings_model)
     
     # Inisialisasi Text Splitter
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=250,
-        chunk_overlap=75,
-        length_function=len,
-        is_separator_regex=False,
+    # text_splitter = RecursiveCharacterTextSplitter(
+    #     chunk_size=250,
+    #     chunk_overlap=75,
+    #     length_function=len,
+    #     is_separator_regex=False,
+    # )
+    text_splitter = SemanticChunker(
+        embeddings_model, breakpoint_threshold_type="percentile"
     )
     print("Klien dan model berhasil diinisialisasi.")
 
@@ -55,7 +79,7 @@ except Exception as e:
     exit()
 
 # --- FUNGSI UTAMA UNTUK MEMPROSES FILE ---
-async def process_and_add_documents(files: List[UploadFile]) -> dict:
+async def process_and_add_documents(files: List[UploadFile], db_client: Client) -> dict:    
     """
     Menerima file PDF, mengunggahnya ke Supabase, memprosesnya, 
     dan menambahkan vektornya ke Pinecone.
@@ -81,23 +105,32 @@ async def process_and_add_documents(files: List[UploadFile]) -> dict:
 
                 # 2. Upload file ke Supabase Storage
                 # 'upsert=True' akan menimpa file jika namanya sudah ada
-                supabase.storage.from_(BUCKET_NAME).upload(
+                # supabase.storage.from_(BUCKET_NAME).upload(
+                #     path=file_path_in_bucket,
+                #     file=temp_file_path,
+                #     file_options={"cache-control": "3600", "upsert": "true", "content-type": "application/pdf"}
+                # )
+                db_client.storage.from_(BUCKET_NAME).upload(
                     path=file_path_in_bucket,
                     file=temp_file_path,
                     file_options={"cache-control": "3600", "upsert": "true", "content-type": "application/pdf"}
                 )
 
                 # 3. Dapatkan URL publik dari Supabase
-                public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
+                # public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
+                public_url = db_client.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
+
                 print(f"Berhasil upload & mendapatkan URL: {public_url}")
 
                 # 4. Load konten PDF menggunakan PyPDFLoader
-                loader = PyPDFLoader(temp_file_path)
+                # loader = PyPDFLoader(temp_file_path)
+                loader = UnstructuredPDFLoader(temp_file_path, mode="elements")
                 documents_per_file = loader.load()
 
                 # 5. Perbarui metadata 'source' dengan URL Supabase
                 for doc in documents_per_file:
                     doc.metadata['source'] = public_url
+                    doc.metadata['source_filename'] = file.filename
                 
                 all_new_documents.extend(documents_per_file)
                 processed_files_info.append({"filename": file.filename, "url": public_url})
@@ -115,6 +148,10 @@ async def process_and_add_documents(files: List[UploadFile]) -> dict:
         print(f"Memecah {len(all_new_documents)} halaman menjadi chunk...")
         all_chunks = text_splitter.split_documents(all_new_documents)
         print(f"Dibuat {len(all_chunks)} chunk baru.")
+
+        # ## INI FIXNYA ##: Panggil fungsi pembersihan sebelum mengirim ke Pinecone
+        print("Membersihkan metadata untuk kompatibilitas dengan Pinecone...")
+        all_chunks = clean_pinecone_metadata(all_chunks)
 
         # 7. Tambahkan chunk ke Pinecone (sudah termasuk proses embedding)
         print("Menambahkan chunk ke Pinecone...")

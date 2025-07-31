@@ -503,7 +503,8 @@ async def update_knowledge_base(
     print(f"Menerima {len(files)} file untuk diproses...")
     
     # Panggil fungsi inti untuk melakukan semua pekerjaan berat
-    result = await process_and_add_documents(files)
+    result = await process_and_add_documents(files, supabase_admin)
+    
 
     # Kembalikan respons berdasarkan hasil dari prosesor
     if result["status"] == "error":
