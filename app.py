@@ -91,6 +91,16 @@ class EditUserToAdminRequest(BaseModel):
     uid: str
     is_admin: bool
 
+class DeleteFileRequest(BaseModel):
+    file_name: str
+
+class ChatRequest(BaseModel):
+    user_id: str
+    history_id: Optional[str] = None
+    message: str
+    file_path: Optional[str] = None  # Optional, can be None if no file is attached
+
+
 
 #==============#
 #  HELPER      #
@@ -377,12 +387,6 @@ async def get_chat(hist_id: int, user = Depends(get_current_user)):
         return {"code": 500, "data": str(e)}
 
 
-class ChatRequest(BaseModel):
-    user_id: str
-    history_id: Optional[str] = None
-    message: str
-    file_path: Optional[str] = None  # Optional, can be None if no file is attached
-
 @app.post("/chat")
 async def create_chat(request: ChatRequest):
     """
@@ -514,6 +518,34 @@ async def update_knowledge_base(
         )
     
     return result
+
+// TODO: Delete on pinecone level.
+@app.get("/file-delete")
+async def delete_file(payload: DeleteFileRequest, user = Depends(get_current_user)):
+    is_admin = user.user_metadata.get("is_admin", False)
+    if is_admin is False:
+        return {"code": 401, "data": "Only admin can delete pdf."}
+
+    file_path = f"public/{payload.file_name}"
+    file_call = (
+        supabase.storage
+        .from_("storage")
+        .remove([file_path])
+    )
+    if len(file_call) <= 0
+        return {"code": 500, "data": "Failed to delete the data."}
+
+    try:
+        _ = (
+            supabase.table("file")
+            .delete()
+            .eq("file_name" payload.file_name)
+            .execute()
+        )
+    except Exception as e:
+        return {"code": 500, "data": str(e)}
+
+    return {"code": 200, "data": "Data Deleted"}
 
 @app.get("/health")
 async def health_check():
