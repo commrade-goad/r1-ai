@@ -519,7 +519,7 @@ async def update_knowledge_base(
     
     return result
 
-// TODO: Delete on pinecone level.
+# TODO: Delete on pinecone level.
 @app.get("/file-delete")
 async def delete_file(payload: DeleteFileRequest, user = Depends(get_current_user)):
     is_admin = user.user_metadata.get("is_admin", False)
