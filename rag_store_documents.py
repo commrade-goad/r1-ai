@@ -168,3 +168,30 @@ async def process_and_add_documents(files: List[UploadFile], db_client: Client) 
     except Exception as e:
         print(f"GAGAL saat chunking atau upload ke Pinecone: {e}")
         return {"status": "error", "message": f"Gagal pada tahap akhir: {e}"}
+
+async def delete_documents(filename: str) -> dict:
+    try:
+        index = pc.Index(INDEX_NAME)
+        delete_response = index.delete(
+            filter={
+                "source_filename": filename
+            }
+        )
+        if delete_response:
+            return {
+                "status": "success",
+                "message": f"Successfully deleted chunks for file: {filename}",
+                "vectors_deleted": delete_response
+            }
+        else:
+            return {
+                "status": "warning",
+                "message": f"No vectors found with filename: {filename}"
+            }
+    except Exception as e:
+        print(f"Error deleting from Pinecone: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Failed to delete chunks for file: {filename}",
+            "error": str(e)
+        }

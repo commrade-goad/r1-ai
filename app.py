@@ -221,42 +221,6 @@ async def myself(user = Depends(get_current_user)):
 #     except Exception as e:
 #         raise HTTPException(status_code=401, detail=str(e))
 
-@app.post("/file-upload")
-async def upload_file(payload: UploadPDFRequest, user = Depends(get_current_user)):
-    is_admin = user.user_metadata.get("is_admin", False)
-    if is_admin is False:
-        return {"code": 401, "data": "Only admin can upload pdf."}
-
-    # NOTE: Not URL-Safe base64 if the safe variant use the down below.
-    decoded_bytes = base64.b64decode(payload.data)
-    # decoded_bytes = base64.urlsafe_b64decode(payload.data).decode('utf-8')
-
-    if magic.from_buffer(decoded_bytes, mime=True) != "application/pdf":
-        return {"code": 400, "data": "The uploaded file is not a pdf."}
-
-    file_path = f"public/{payload.name}" # assume there is .pdf already.
-    file_call = (
-        supabase.storage
-        .from_("storage")
-        .upload(
-            file=decoded_bytes,
-            path=file_path,
-            file_options={"cache-control": "3600", "upsert": "false"}
-       )
-    )
-    try:
-        _ = (
-            supabase.table("file")
-            .insert(
-                {"file_path": file_path, "file_name": payload.name, "uploaded_at": datetime.datetime.now(), "indexed": False}
-            ).execute()
-        )
-    except Exception as e:
-        return {"code": 500, "data": str(e)}
-
-    return {"code": 200, "data": file_call.full_path}
-
-
 @app.post("/file-del")
 async def del_file(payload: DeletePDFRequest, user = Depends(get_current_user)):
     is_admin = user.user_metadata.get("is_admin", False)
@@ -519,8 +483,7 @@ async def update_knowledge_base(
     
     return result
 
-# TODO: Delete on pinecone level.
-@app.get("/file-delete")
+@app.get("/delete-knowledge")
 async def delete_file(payload: DeleteFileRequest, user = Depends(get_current_user)):
     is_admin = user.user_metadata.get("is_admin", False)
     if is_admin is False:
@@ -535,15 +498,9 @@ async def delete_file(payload: DeleteFileRequest, user = Depends(get_current_use
     if len(file_call) <= 0
         return {"code": 500, "data": "Failed to delete the data."}
 
-    try:
-        _ = (
-            supabase.table("file")
-            .delete()
-            .eq("file_name" payload.file_name)
-            .execute()
-        )
-    except Exception as e:
-        return {"code": 500, "data": str(e)}
+    pinecone_result = await delete_documents(payload.file_name)
+    if pinecone_result["status"] != "success":
+        return {"code": 500, "data": f"Failed to delete from vector database: {pinecone_result['message']}"}
 
     return {"code": 200, "data": "Data Deleted"}
 
