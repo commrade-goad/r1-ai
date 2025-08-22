@@ -22,9 +22,14 @@ from rag_store_documents import process_and_add_documents
 #==============#
 app = f.FastAPI()
 # Tambahkan CORS middleware
+origins = [
+    "https://hegai.joelmedia.my.id",
+    "http://localhost:5173", # For local development
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # atau ["http://localhost:5173"] untuk Vite dev server
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -498,7 +503,7 @@ async def update_knowledge_base(
     print(f"Menerima {len(files)} file untuk diproses...")
     
     # Panggil fungsi inti untuk melakukan semua pekerjaan berat
-    result = await process_and_add_documents(files)
+    result = await process_and_add_documents(files, supabase_admin)
 
     # Kembalikan respons berdasarkan hasil dari prosesor
     if result["status"] == "error":
@@ -509,6 +514,6 @@ async def update_knowledge_base(
     
     return result
 
-
-# TODO: Summerize, Edit Chat?, Edit File?
-# NOTE: Seperate file
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}

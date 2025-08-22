@@ -4,3 +4,14 @@ supabase==2.16.0
 python-dotenv==1.1.1
 httpx==0.28.1
 python-magic==0.4.27
+gunicorn
+httpx
+langchain
+langchain-openai
+langchain-pinecone
+langchain-community
+langchain-experimental
+pinecone
+pypdf
+unstructured[pdf]
+python-magic
