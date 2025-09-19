@@ -13,8 +13,9 @@ from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
 from supabase import create_client, Client
 
+from langchain_core.documents import Document
+from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_experimental.text_splitter import SemanticChunker
-
 
 # Muat environment variables dari file .env
 load_dotenv()
@@ -79,7 +80,7 @@ except Exception as e:
     exit()
 
 # --- FUNGSI UTAMA UNTUK MEMPROSES FILE ---
-async def process_and_add_documents(files: List[UploadFile], db_client: Client) -> dict:    
+async def process_and_add_documents(files: List[UploadFile], db_client: Client) -> dict:
     """
     Menerima file PDF, mengunggahnya ke Supabase, memprosesnya, 
     dan menambahkan vektornya ke Pinecone.
@@ -105,11 +106,7 @@ async def process_and_add_documents(files: List[UploadFile], db_client: Client) 
 
                 # 2. Upload file ke Supabase Storage
                 # 'upsert=True' akan menimpa file jika namanya sudah ada
-                # supabase.storage.from_(BUCKET_NAME).upload(
-                #     path=file_path_in_bucket,
-                #     file=temp_file_path,
-                #     file_options={"cache-control": "3600", "upsert": "true", "content-type": "application/pdf"}
-                # )
+
                 db_client.storage.from_(BUCKET_NAME).upload(
                     path=file_path_in_bucket,
                     file=temp_file_path,
@@ -117,10 +114,17 @@ async def process_and_add_documents(files: List[UploadFile], db_client: Client) 
                 )
 
                 # 3. Dapatkan URL publik dari Supabase
-                # public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
                 public_url = db_client.storage.from_(BUCKET_NAME).get_public_url(file_path_in_bucket)
-
                 print(f"Berhasil upload & mendapatkan URL: {public_url}")
+
+                # 2.5 Upload file ke Supabase Table
+                response_table = db_client.table("files").insert({
+                    "name": file.filename,
+                    "size": file.size,
+                    "type": "application/pdf",
+                    "url": public_url,
+                }).execute()
+                print(f"Berhasil menyimpan metadata file ke Supabase Table (files)")
 
                 # 4. Load konten PDF menggunakan PyPDFLoader
                 # loader = PyPDFLoader(temp_file_path)
@@ -128,9 +132,12 @@ async def process_and_add_documents(files: List[UploadFile], db_client: Client) 
                 documents_per_file = loader.load()
 
                 # 5. Perbarui metadata 'source' dengan URL Supabase
+                # + Tambahkan metadata doc_id sebagai foreign key 
+                # (doc_id berisi id dari uuid file yang diupload ke supabase table)
                 for doc in documents_per_file:
                     doc.metadata['source'] = public_url
-                    doc.metadata['source_filename'] = file.filename
+                    doc.metadata['filename'] = file.filename
+                    doc.metadata['doc_id'] = response_table.data[0]['id']
                 
                 all_new_documents.extend(documents_per_file)
                 processed_files_info.append({"filename": file.filename, "url": public_url})

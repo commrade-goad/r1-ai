@@ -26,9 +26,10 @@ origins = [
     "https://hegai.joelmedia.my.id",
     "http://localhost:5173", # For local development
 ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins, 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -504,7 +505,6 @@ async def update_knowledge_base(
     
     # Panggil fungsi inti untuk melakukan semua pekerjaan berat
     result = await process_and_add_documents(files, supabase_admin)
-    
 
     # Kembalikan respons berdasarkan hasil dari prosesor
     if result["status"] == "error":
@@ -518,7 +518,3 @@ async def update_knowledge_base(
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
-
-
-# TODO: Summerize, Edit Chat?, Edit File?
-# NOTE: Seperate file

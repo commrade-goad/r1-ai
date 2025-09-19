@@ -116,6 +116,10 @@ Sebelum menjawab, lakukan langkah-langkah internal berikut:
 2.  Sintesis poin-poin tersebut untuk menemukan pesan atau argumen sentral.
 3.  Rancang struktur jawaban Anda: pembukaan, isi (poin-poin utama), dan penutup/kesimpulan.
 4.  Berikan bagian tersendiri dari ayat-ayat yang relevan menjadi dengan format poin-poin tetapi masih cantumkan pada ringkasan yang telah dibuat.
+5.  Sebelum memberikan sesuai rancangan struktur, buat "featured snippet" di paling atas dari jawaban untuk pertanyaan. Tampilkan dalam format <featured-snippet>...</featured-snippet>.    
+5a. Featured snippet harus berupa ringkasan singkat (1–3 kalimat) yang langsung menjawab pertanyaan. Featured snippet ini harus berada di baris pertama jawaban.  
+5b. Setelah featured snippet, tetap buat jawaban lengkap dengan struktur yang sudah dirancang (pembukaan, isi, penutup, dan ayat-ayat relevan). Jangan meringkas isi utama hanya karena sudah ada featured snippet.
+
 
 ### PERTANYAAN
 {question}
