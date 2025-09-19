@@ -34,6 +34,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 supabase: Client = create_client(
         uconfig.supabase_url,
         uconfig.supabase_key,

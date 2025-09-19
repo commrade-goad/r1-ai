@@ -4,8 +4,10 @@ from typing import List
 
 from dotenv import load_dotenv
 from fastapi import UploadFile
+from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader
+# from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
@@ -104,6 +106,7 @@ async def process_and_add_documents(files: List[UploadFile], db_client: Client) 
 
                 # 2. Upload file ke Supabase Storage
                 # 'upsert=True' akan menimpa file jika namanya sudah ada
+
                 db_client.storage.from_(BUCKET_NAME).upload(
                     path=file_path_in_bucket,
                     file=temp_file_path,
